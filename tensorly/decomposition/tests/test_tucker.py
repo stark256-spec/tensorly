@@ -21,6 +21,87 @@ from ...testing import (
 )
 
 
+def test_sparse_tucker_l1_reg():
+    """Sparse Tucker: l1_reg on factor matrices produces sparser factors."""
+    rng = tl.check_random_state(0)
+    tensor = tl.tensor(rng.random_sample((6, 5, 4)))
+
+    (core_dense, factors_dense), _ = partial_tucker(tensor, rank=[3, 3, 3], n_iter_max=50)
+    (core_sparse, factors_sparse), _ = partial_tucker(
+        tensor, rank=[3, 3, 3], n_iter_max=50, l1_reg=0.1
+    )
+
+    # Sparse factors should have at least as many zeros as the dense version.
+    dense_zeros = sum(int(tl.sum(tl.abs(f) < 1e-10)) for f in factors_dense)
+    sparse_zeros = sum(int(tl.sum(tl.abs(f) < 1e-10)) for f in factors_sparse)
+    assert_(
+        sparse_zeros >= dense_zeros,
+        f"l1_reg factors should be sparser: got {sparse_zeros} zeros vs {dense_zeros}.",
+    )
+
+    # Reconstruction error should be reasonable (not NaN/Inf).
+    rec = tucker_to_tensor((core_sparse, factors_sparse))
+    assert_(not tl.any(tl.tensor(float("nan")) == rec), "Reconstruction contains NaN.")
+
+
+def test_sparse_tucker_core_l1_reg():
+    """Sparse Tucker: core_l1_reg promotes a sparse core tensor."""
+    rng = tl.check_random_state(1)
+    tensor = tl.tensor(rng.random_sample((6, 5, 4)))
+
+    (core_dense, _), _ = partial_tucker(tensor, rank=[3, 3, 3], n_iter_max=50)
+    (core_sparse, factors_sparse), _ = partial_tucker(
+        tensor, rank=[3, 3, 3], n_iter_max=50, core_l1_reg=0.05
+    )
+
+    dense_core_zeros = int(tl.sum(tl.abs(core_dense) < 1e-10))
+    sparse_core_zeros = int(tl.sum(tl.abs(core_sparse) < 1e-10))
+    assert_(
+        sparse_core_zeros >= dense_core_zeros,
+        f"core_l1_reg should produce a sparser core: {sparse_core_zeros} zeros vs {dense_core_zeros}.",
+    )
+
+
+def test_sparse_tucker_both_regs():
+    """Sparse Tucker: combining l1_reg and core_l1_reg works without error."""
+    rng = tl.check_random_state(2)
+    tensor = tl.tensor(rng.random_sample((5, 4, 3)))
+
+    (core, factors), rec_errors = partial_tucker(
+        tensor, rank=[2, 2, 2], n_iter_max=30, l1_reg=0.05, core_l1_reg=0.05
+    )
+
+    assert_(len(rec_errors) > 0, "Should return reconstruction errors.")
+    rec = tucker_to_tensor((core, factors))
+    assert_(tl.shape(rec) == tl.shape(tensor), "Reconstructed shape must match input.")
+
+
+def test_sparse_tucker_class():
+    """Tucker class exposes l1_reg and core_l1_reg and passes them through."""
+    rng = tl.check_random_state(3)
+    tensor = tl.tensor(rng.random_sample((5, 4, 4)))
+
+    estimator = Tucker(rank=[2, 2, 2], n_iter_max=20, l1_reg=0.05, core_l1_reg=0.05)
+    result = estimator.fit_transform(tensor)
+    core, factors = result
+    assert_(tl.shape(core) == (2, 2, 2))
+
+
+def test_sparse_tucker_no_reg_unchanged():
+    """With l1_reg=None and core_l1_reg=None behaviour is identical to baseline."""
+    rng = tl.check_random_state(4)
+    tensor = tl.tensor(rng.random_sample((5, 4, 3)))
+
+    (core_baseline, factors_baseline), _ = partial_tucker(
+        tensor, rank=[2, 2, 2], n_iter_max=20, random_state=0
+    )
+    (core_no_reg, factors_no_reg), _ = partial_tucker(
+        tensor, rank=[2, 2, 2], n_iter_max=20, l1_reg=None, core_l1_reg=None, random_state=0
+    )
+
+    assert_array_equal(tl.to_numpy(core_baseline), tl.to_numpy(core_no_reg))
+
+
 def test_partial_tucker():
     """Test for the Partial Tucker decomposition"""
     rng = tl.check_random_state(1234)

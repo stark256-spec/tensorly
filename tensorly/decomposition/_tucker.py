@@ -16,6 +16,7 @@ from math import sqrt
 import warnings
 from collections.abc import Iterable
 from ..tenalg.svd import svd_interface
+from ..tenalg.proximal import soft_thresholding
 
 # Author: Jean Kossaifi <jean.kossaifi+tensors@gmail.com>
 
@@ -114,6 +115,8 @@ def partial_tucker(
     verbose=False,
     mask=None,
     svd_mask_repeats=5,
+    l1_reg=None,
+    core_l1_reg=None,
 ):
     """Partial tucker decomposition via Higher Order Orthogonal Iteration (HOI)
 
@@ -145,6 +148,17 @@ def partial_tucker(
         the values are missing and 1 everywhere else. Note:  if tensor is
         sparse, then mask should also be sparse with a fill value of 1 (or
         True).
+    l1_reg : float or None, optional
+        If not None, applies L1 (lasso) regularization to the factor matrices
+        after each HOOI update via soft-thresholding with this threshold value.
+        Promotes sparsity in the factor matrices. When set, factors are no longer
+        guaranteed to be orthonormal and the reconstruction error is computed
+        explicitly (more expensive). Default: None.
+    core_l1_reg : float or None, optional
+        If not None, applies L1 (lasso) regularization to the core tensor after
+        each iteration via soft-thresholding. Promotes a sparse core, which is
+        the key property for tensor-based compression/codec applications.
+        Default: None.
 
     Returns
     -------
@@ -154,6 +168,18 @@ def partial_tucker(
             list of factors of the Tucker decomposition.
             with ``core.shape[i] == (tensor.shape[i], ranks[i]) for i in modes``
 
+    Notes
+    -----
+    When ``l1_reg`` or ``core_l1_reg`` is set the factors and/or core are
+    soft-thresholded after each update, breaking strict orthonormality of the
+    factors.  The reconstruction error is therefore computed as
+    ``||tensor - tucker_to_tensor((core, factors))|| / ||tensor||``, which is
+    more expensive than the standard HOOI shortcut but gives the correct value.
+
+    References
+    ----------
+    .. [1] T.G.Kolda and B.W.Bader, "Tensor Decompositions and Applications",
+       SIAM REVIEW, vol. 51, n. 3, pp. 455-500, 2009.
     """
     if modes is None:
         modes = list(range(tl.ndim(tensor)))
@@ -199,12 +225,21 @@ def partial_tucker(
                 n_eigenvecs=rank[index],
                 random_state=random_state,
             )
+            if l1_reg is not None:
+                eigenvecs = soft_thresholding(eigenvecs, l1_reg)
             factors[index] = eigenvecs
 
         core = multi_mode_dot(tensor, factors, modes=modes, transpose=True)
 
-        # The factors are orthonormal and therefore do not affect the reconstructed tensor's norm
-        rec_error = sqrt(tl.abs(norm_tensor**2 - tl.norm(core, 2) ** 2)) / norm_tensor
+        if core_l1_reg is not None:
+            core = soft_thresholding(core, core_l1_reg)
+
+        # When regularization is active, factors are no longer orthonormal so
+        # we compute the full reconstruction error; otherwise use the fast HOOI shortcut.
+        if l1_reg is not None or core_l1_reg is not None:
+            rec_error = tl.norm(tensor - tucker_to_tensor((core, factors)), 2) / norm_tensor
+        else:
+            rec_error = sqrt(tl.abs(norm_tensor**2 - tl.norm(core, 2) ** 2)) / norm_tensor
         rec_errors.append(rec_error)
 
         if iteration > 1:
@@ -233,6 +268,8 @@ def tucker(
     random_state=None,
     mask=None,
     verbose=False,
+    l1_reg=None,
+    core_l1_reg=None,
 ):
     """Tucker decomposition via Higher Order Orthogonal Iteration (HOI)
 
@@ -269,6 +306,13 @@ def tucker(
         True).
     verbose : int, optional
         level of verbosity
+    l1_reg : float or None, optional
+        L1 regularization threshold applied to factor matrices after each
+        HOOI update (soft-thresholding). Promotes sparse factors. Default: None.
+    core_l1_reg : float or None, optional
+        L1 regularization threshold applied to the core tensor after each
+        iteration. Promotes a sparse core — the key property for
+        tensor-based compression and codec applications. Default: None.
 
     Returns
     -------
@@ -312,6 +356,8 @@ def tucker(
             random_state=random_state,
             mask=mask,
             verbose=verbose,
+            l1_reg=l1_reg,
+            core_l1_reg=core_l1_reg,
         )
 
         factors = list(new_factors)
@@ -337,6 +383,8 @@ def tucker(
             random_state=random_state,
             mask=mask,
             verbose=verbose,
+            l1_reg=l1_reg,
+            core_l1_reg=core_l1_reg,
         )
         tensor = TuckerTensor((core, factors))
         if return_errors:
@@ -756,6 +804,8 @@ class Tucker(DecompositionMixin):
         random_state=None,
         mask=None,
         verbose=False,
+        l1_reg=None,
+        core_l1_reg=None,
     ):
         self.rank = rank
         self.fixed_factors = fixed_factors
@@ -767,6 +817,8 @@ class Tucker(DecompositionMixin):
         self.random_state = random_state
         self.mask = mask
         self.verbose = verbose
+        self.l1_reg = l1_reg
+        self.core_l1_reg = core_l1_reg
 
     def fit_transform(self, tensor):
         tucker_tensor = tucker(
@@ -781,6 +833,8 @@ class Tucker(DecompositionMixin):
             random_state=self.random_state,
             mask=self.mask,
             verbose=self.verbose,
+            l1_reg=self.l1_reg,
+            core_l1_reg=self.core_l1_reg,
         )
         self.decomposition_ = tucker_tensor
         return tucker_tensor
