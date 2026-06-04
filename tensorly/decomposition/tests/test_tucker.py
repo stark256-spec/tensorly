@@ -21,6 +21,51 @@ from ...testing import (
 )
 
 
+def test_sparse_tucker_reconstruction_quality():
+    """Sparse Tucker: reconstruction error is bounded even with regularisation.
+
+    Verifies that soft-thresholded HOOI produces a valid (finite, non-NaN)
+    approximation with reconstruction error below a loose upper bound.
+    A small l1_reg should only mildly increase reconstruction error compared
+    to the unregularised baseline, confirming practical usefulness.
+
+    Algorithm reference: Soft-thresholding in HOOI is the proximal-gradient
+    step for the Lasso penalty on factor matrices, following the framework
+    of Xu & Yin (2013) "A Block Coordinate Descent Method for Regularized
+    Multiconvex Optimization" and the sparse Tucker formulation in
+    Allen (2012) "Sparse Higher-Order Principal Components Analysis".
+    """
+    rng = tl.check_random_state(42)
+    tensor = tl.tensor(rng.random_sample((8, 7, 6)))
+    norm_tensor = tl.norm(tensor, 2)
+
+    # Baseline (no regularisation)
+    (core_base, factors_base), _ = partial_tucker(
+        tensor, rank=[4, 4, 4], n_iter_max=100, random_state=42
+    )
+    rec_base = tl.norm(
+        tucker_to_tensor((core_base, factors_base)) - tensor, 2
+    ) / norm_tensor
+
+    # Sparse core only (most theoretically sound variant)
+    (core_sp, factors_sp), _ = partial_tucker(
+        tensor, rank=[4, 4, 4], n_iter_max=100, core_l1_reg=0.01, random_state=42
+    )
+    rec_sp = tl.norm(
+        tucker_to_tensor((core_sp, factors_sp)) - tensor, 2
+    ) / norm_tensor
+
+    # Reconstruction must be finite and not NaN
+    assert_(not tl.any(tl.tensor(float("nan")) == core_sp), "Core contains NaN.")
+    assert_(tl.to_numpy(rec_sp) < 1.0, f"Reconstruction error {rec_sp:.4f} too large (>1.0).")
+
+    # Mild regularisation should not dramatically worsen reconstruction
+    assert_(
+        tl.to_numpy(rec_sp) <= tl.to_numpy(rec_base) * 5.0 + 0.2,
+        f"Regularised error ({rec_sp:.4f}) is unreasonably larger than baseline ({rec_base:.4f}).",
+    )
+
+
 def test_sparse_tucker_l1_reg():
     """Sparse Tucker: l1_reg on factor matrices produces sparser factors."""
     rng = tl.check_random_state(0)

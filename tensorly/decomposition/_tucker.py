@@ -180,6 +180,26 @@ def partial_tucker(
     ----------
     .. [1] T.G.Kolda and B.W.Bader, "Tensor Decompositions and Applications",
        SIAM REVIEW, vol. 51, n. 3, pp. 455-500, 2009.
+    .. [2] G. Allen, "Sparse Higher-Order Principal Components Analysis",
+       Proc. 15th AISTATS, PMLR 22:27-35, 2012.
+       Introduces the sparse Tucker decomposition with L1 penalties on factors.
+    .. [3] Y. Xu, W. Yin, "A Block Coordinate Descent Method for Regularized
+       Multiconvex Optimization with Applications to Nonnegative Tensor
+       Factorization and Completion", SIAM J. Imaging Sci., 6(3), 2013.
+       Convergence analysis for block-coordinate descent with proximal steps.
+    .. [4] M. Sørensen, L. De Lathauwer, "Coupled Canonical Polyadic
+       Decompositions and (Coupled) Decompositions in Multilinear Rank-
+       (L_r,n, L_r,n, 1) Terms", SIAM J. Matrix Anal. Appl., 2015.
+
+    Notes
+    -----
+    The soft-thresholding step applied by ``l1_reg`` and ``core_l1_reg`` is the
+    proximal-gradient update for an L1 penalty, as described in [2]_ and [3]_.
+    Convergence of HOOI with proximal steps is not guaranteed in general (the
+    objective is non-convex), but empirical evidence shows stable behaviour for
+    small regularisation values.  Use ``l1_reg`` and ``core_l1_reg`` as a
+    sparsity-inducing post-processing step and verify reconstruction quality for
+    your specific application.
     """
     if modes is None:
         modes = list(range(tl.ndim(tensor)))
