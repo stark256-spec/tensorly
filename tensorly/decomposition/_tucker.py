@@ -185,11 +185,9 @@ def partial_tucker(
        Introduces the sparse Tucker decomposition with L1 penalties on factors.
     .. [3] Y. Xu, W. Yin, "A Block Coordinate Descent Method for Regularized
        Multiconvex Optimization with Applications to Nonnegative Tensor
-       Factorization and Completion", SIAM J. Imaging Sci., 6(3), 2013.
+       Factorization and Completion", SIAM J. Imaging Sci., 6(3):1758-1789,
+       2013. DOI: 10.1137/120887795.
        Convergence analysis for block-coordinate descent with proximal steps.
-    .. [4] M. Sørensen, L. De Lathauwer, "Coupled Canonical Polyadic
-       Decompositions and (Coupled) Decompositions in Multilinear Rank-
-       (L_r,n, L_r,n, 1) Terms", SIAM J. Matrix Anal. Appl., 2015.
 
     Notes
     -----
